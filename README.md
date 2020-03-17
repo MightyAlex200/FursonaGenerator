@@ -1,7 +1,7 @@
 A fork of [HackerPoet/FursonaGenerator](https://github.com/HackerPoet/FursonaGenerator) that exports a latent space interpolation of the GAN.
 Includes pre-trained model files.
 
-Video: https://youtu.be/RU8RqFjDfwM
+Video: https://youtu.be/wA9EhxbFJ0U
 
 Original README:
 
