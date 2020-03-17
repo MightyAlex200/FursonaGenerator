@@ -4,8 +4,9 @@ import numpy as np
 import cv2
 
 #User constants
-device = "cpu"
+device = "gpu"
 model_dir = 'test24/'
+export_dir = 'export/'
 is_gan = True
 background_color = (210, 210, 210)
 edge_color = (60, 60, 60)
@@ -20,12 +21,12 @@ slider_py = 10
 slider_cols = 20
 
 #Keras
-print "Loading Keras..."
+print("Loading Keras...")
 import os
 os.environ['THEANORC'] = "./" + device + ".theanorc"
 os.environ['KERAS_BACKEND'] = "theano"
 import theano
-print "Theano Version: " + theano.__version__
+print("Theano Version: " + theano.__version__)
 from keras.models import Sequential, load_model, model_from_json
 from keras.layers import Dense, Activation, Dropout, Flatten, Reshape
 from keras.layers.convolutional import Conv2D, Conv2DTranspose, ZeroPadding2D
@@ -40,47 +41,14 @@ from keras.utils import plot_model
 from keras import backend as K
 K.set_image_data_format('channels_first')
 
-print "Loading model..."
-if is_gan:
-	gen_model = load_model(model_dir + 'generator.h5')
-	num_params = gen_model.input_shape[1]
-	img_c, img_h, img_w = gen_model.output_shape[1:]
-	
-	if len(sys.argv) >= 2:
-		enc_model = load_model(model_dir + 'encoder.h5')
-	
-		fname_in = sys.argv[1]
-		fname_out = fname_in.split('.')
-		fname_out[-2] += "_out"
-		fname_out = '.'.join(fname_out)
+from noise import pnoise1
+from PIL import Image
 
-		img = cv2.imread(fname_in)
-		h = img.shape[0]
-		w = img.shape[1]
-		if w > h:
-			offs = (w - h)/2
-			img = img[:,offs:offs+h,:]
-		elif h > w:
-			offs = (h - w)/2
-			img = img[offs:offs+w,:,:]
-		img = cv2.resize(img, (img_h, img_w), interpolation = cv2.INTER_AREA)
-		
-		img = np.transpose(img, (2, 0, 1))
-		img = img.astype(np.float32) / 255.0
-		img = np.expand_dims(img, axis=0)
-		
-		w = enc_model.predict(img)
-		img = gen_model.predict(enc_model.predict(img))[0]
-		
-		img = (img * 255.0).astype(np.uint8)
-		img = np.transpose(img, (1, 2, 0))
-		cv2.imwrite(fname_out, img)
-		exit(0)
-else:
-	model = load_model(model_dir + 'model.h5')
-	gen_func = K.function([model.get_layer('encoder').input, K.learning_phase()], [model.layers[-1].output])
-	num_params = model.get_layer('encoder').input_shape[1]
-	img_c, img_h, img_w = model.output_shape[1:]
+print("Loading model...")
+
+gen_model = load_model(model_dir + 'generator.h5')
+num_params = gen_model.input_shape[1]
+img_c, img_h, img_w = gen_model.output_shape[1:]
 	
 assert(img_c == 3)
 
@@ -104,11 +72,14 @@ prev_mouse_pos = None
 mouse_pressed = False
 cur_slider_ix = 0
 needs_update = True
-cur_params = np.zeros((num_params,), dtype=np.float32)
+param_times = np.random.rand(num_params) * 100
+cur_params = np.clip(np.random.normal(0.0, 1.0, (num_params,)), -3.0, 3.0) #np.zeros((num_params,), dtype=np.float32)
 cur_face = np.zeros((img_c, img_h, img_w), dtype=np.uint8)
 rgb_array = np.zeros((img_h, img_w, img_c), dtype=np.uint8)
+export = True
+exportfps = 60
 
-print "Loading Statistics..."
+print("Loading Statistics...")
 means = np.load(model_dir + 'means.npy')
 stds  = np.load(model_dir + 'stds.npy')
 evals = np.load(model_dir + 'evals.npy')
@@ -178,6 +149,7 @@ def draw_face():
 	
 #Main loop
 running = True
+frame_no = 0
 while running:
 	#Process events
 	for event in pygame.event.get():
@@ -204,16 +176,21 @@ while running:
 
 	#Check if we need an update
 	if needs_update:
+		cur_params = np.fromiter((pnoise1(xi, 1) * 3 for xi in param_times), param_times.dtype, count=len(param_times))
+		param_times += 0.01
 		x = means + np.dot(cur_params * evals, evecs)
 		#x = means + stds * cur_params
 		x = np.expand_dims(x, axis=0)
-		if is_gan:
-			y = gen_model.predict(x)[0]
-		else:
-			y = gen_func([x, 0])[0][0]
+		y = gen_model.predict(x)[0]
 		cur_face = (y * 255.0).astype(np.uint8)
-		needs_update = False
+		# needs_update = False
 	
+	if export:
+		im = Image.fromarray(np.transpose(cur_face, (1, 2, 0)), 'RGB')
+		im.save(export_dir + str(frame_no) + '.png')
+		frame_no += 1
+		print('Exported ' + str(frame_no) + ' frames (' + str(int(frame_no / exportfps)) + ' seconds)')
+
 	#Draw to the screen
 	screen.fill(background_color)
 	draw_face()
@@ -221,4 +198,5 @@ while running:
 	
 	#Flip the screen buffer
 	pygame.display.flip()
-	pygame.time.wait(10)
+	if not export:
+		pygame.time.wait(10)

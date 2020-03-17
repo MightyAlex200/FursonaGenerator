@@ -1,0 +1,8 @@
+{
+    "python.linting.pylintEnabled": false,
+    "python.linting.enabled": false,
+    "python.jediEnabled": false,
+    "python.formatting.autopep8Path": "",
+    "python.formatting.blackPath": "",
+    "python.formatting.provider": "none"
+}
